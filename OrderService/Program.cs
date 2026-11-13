@@ -1,3 +1,5 @@
+using Scalar.AspNetCore;
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Host.UseWindowsService(options =>
@@ -17,8 +19,9 @@ builder.Services.AddHttpClient("NotificationClient", client =>
 
 var app = builder.Build();
 
-// OpenAPI JSON disponible en: http://localhost:8080/openapi/v1.json
+// UI: http://localhost:8080/scalar/v1
 app.MapOpenApi();
+app.MapScalarApiReference();
 
 // GET /orders
 app.MapGet("/orders", () =>
