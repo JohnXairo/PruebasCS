@@ -1,8 +1,5 @@
 var builder = WebApplication.CreateBuilder(args);
 
-// -------------------------------------------------------
-// Soporte Windows Service
-// -------------------------------------------------------
 builder.Host.UseWindowsService(options =>
 {
     options.ServiceName = "InstanaLab-OrderService";
@@ -20,11 +17,10 @@ builder.Services.AddHttpClient("NotificationClient", client =>
 
 var app = builder.Build();
 
-// Scalar UI: http://localhost:8080/scalar/v1
+// OpenAPI JSON disponible en: http://localhost:8080/openapi/v1.json
 app.MapOpenApi();
-app.MapScalarApiReference();
 
-// GET /orders - lista de ordenes (simuladas)
+// GET /orders
 app.MapGet("/orders", () =>
 {
     var orders = new[]
@@ -35,8 +31,7 @@ app.MapGet("/orders", () =>
     };
     return Results.Ok(orders);
 })
-.WithName("GetOrders")
-.WithOpenApi();
+.WithName("GetOrders");
 
 // GET /orders/{id}
 app.MapGet("/orders/{id:int}", (int id) =>
@@ -44,13 +39,11 @@ app.MapGet("/orders/{id:int}", (int id) =>
     if (id <= 0) return Results.NotFound();
     return Results.Ok(new { Id = id, Product = "Sample Product", Quantity = 1, Status = "Processing" });
 })
-.WithName("GetOrderById")
-.WithOpenApi();
+.WithName("GetOrderById");
 
-// POST /orders - crea una orden, verifica inventario y envia notificacion
+// POST /orders
 app.MapPost("/orders", async (CreateOrderRequest request, IHttpClientFactory factory) =>
 {
-    // 1. Verificar inventario
     var inventoryClient = factory.CreateClient("InventoryClient");
     var inventoryResponse = await inventoryClient.GetAsync($"/inventory/{request.ProductId}");
 
@@ -62,7 +55,6 @@ app.MapPost("/orders", async (CreateOrderRequest request, IHttpClientFactory fac
     if (inventory is null || inventory.Stock < request.Quantity)
         return Results.BadRequest(new { Error = "Insufficient stock", Available = inventory?.Stock ?? 0 });
 
-    // 2. Reservar stock
     var reserveResponse = await inventoryClient.PostAsJsonAsync("/inventory/reserve", new
     {
         ProductId = request.ProductId,
@@ -72,7 +64,6 @@ app.MapPost("/orders", async (CreateOrderRequest request, IHttpClientFactory fac
     if (!reserveResponse.IsSuccessStatusCode)
         return Results.Problem("Could not reserve stock", statusCode: 503);
 
-    // 3. Enviar notificacion
     var notifClient = factory.CreateClient("NotificationClient");
     await notifClient.PostAsJsonAsync("/notifications", new
     {
@@ -93,8 +84,7 @@ app.MapPost("/orders", async (CreateOrderRequest request, IHttpClientFactory fac
 
     return Results.Created($"/orders/{newOrder.Id}", newOrder);
 })
-.WithName("CreateOrder")
-.WithOpenApi();
+.WithName("CreateOrder");
 
 app.Run();
 

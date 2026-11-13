@@ -1,8 +1,5 @@
 var builder = WebApplication.CreateBuilder(args);
 
-// -------------------------------------------------------
-// Soporte Windows Service
-// -------------------------------------------------------
 builder.Host.UseWindowsService(options =>
 {
     options.ServiceName = "InstanaLab-NotificationService";
@@ -12,14 +9,11 @@ builder.Services.AddOpenApi();
 
 var app = builder.Build();
 
-// Scalar UI: http://localhost:8082/scalar/v1
+// OpenAPI JSON disponible en: http://localhost:8082/openapi/v1.json
 app.MapOpenApi();
-app.MapScalarApiReference();
 
-// Historial en memoria
 var notifications = new List<NotificationRecord>();
 
-// POST /notifications - registrar y "enviar" notificacion
 app.MapPost("/notifications", (NotificationRequest request) =>
 {
     if (string.IsNullOrWhiteSpace(request.To))
@@ -35,27 +29,21 @@ app.MapPost("/notifications", (NotificationRequest request) =>
     );
 
     notifications.Add(record);
-
     Console.WriteLine($"[Notification] To: {record.To} | Subject: {record.Subject}");
 
     return Results.Created($"/notifications/{record.Id}", record);
 })
-.WithName("SendNotification")
-.WithOpenApi();
+.WithName("SendNotification");
 
-// GET /notifications - historial de notificaciones
 app.MapGet("/notifications", () => Results.Ok(notifications))
-   .WithName("GetNotifications")
-   .WithOpenApi();
+   .WithName("GetNotifications");
 
-// GET /notifications/{id}
 app.MapGet("/notifications/{id:int}", (int id) =>
 {
     var record = notifications.FirstOrDefault(n => n.Id == id);
     return record is null ? Results.NotFound() : Results.Ok(record);
 })
-.WithName("GetNotificationById")
-.WithOpenApi();
+.WithName("GetNotificationById");
 
 app.Run();
 

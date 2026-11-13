@@ -1,8 +1,5 @@
 var builder = WebApplication.CreateBuilder(args);
 
-// -------------------------------------------------------
-// Soporte Windows Service
-// -------------------------------------------------------
 builder.Host.UseWindowsService(options =>
 {
     options.ServiceName = "InstanaLab-InventoryService";
@@ -12,11 +9,9 @@ builder.Services.AddOpenApi();
 
 var app = builder.Build();
 
-// Scalar UI: http://localhost:8081/scalar/v1
+// OpenAPI JSON disponible en: http://localhost:8081/openapi/v1.json
 app.MapOpenApi();
-app.MapScalarApiReference();
 
-// Inventario en memoria
 var catalog = new Dictionary<int, InventoryProduct>
 {
     [1] = new(1, "Laptop",    50),
@@ -26,23 +21,17 @@ var catalog = new Dictionary<int, InventoryProduct>
     [5] = new(5, "Headset",   80)
 };
 
-// GET /inventory - todos los productos
 app.MapGet("/inventory", () => Results.Ok(catalog.Values))
-   .WithName("GetInventory")
-   .WithOpenApi();
+   .WithName("GetInventory");
 
-// GET /inventory/{productId} - stock de un producto
 app.MapGet("/inventory/{productId:int}", (int productId) =>
 {
     if (!catalog.TryGetValue(productId, out var product))
         return Results.NotFound(new { Error = $"Product {productId} not found" });
-
     return Results.Ok(product);
 })
-.WithName("GetInventoryByProduct")
-.WithOpenApi();
+.WithName("GetInventoryByProduct");
 
-// POST /inventory/reserve - reservar unidades
 app.MapPost("/inventory/reserve", (ReserveRequest request) =>
 {
     if (!catalog.TryGetValue(request.ProductId, out var product))
@@ -60,8 +49,7 @@ app.MapPost("/inventory/reserve", (ReserveRequest request) =>
         Remaining = catalog[request.ProductId].Stock
     });
 })
-.WithName("ReserveStock")
-.WithOpenApi();
+.WithName("ReserveStock");
 
 app.Run();
 

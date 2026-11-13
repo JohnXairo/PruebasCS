@@ -6,19 +6,12 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>OrderService</RootNamespace>
     <AssemblyName>OrderService</AssemblyName>
-    <!--
-      Framework-dependent: usa el runtime .NET instalado en el sistema.
-      REQUERIDO para que el profiler CLR de Instana pueda inyectarse correctamente.
-    -->
     <SelfContained>false</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- OpenAPI built-in de .NET 9/10 -->
     <PackageReference Include="Microsoft.AspNetCore.OpenApi"                  Version="10.0.0" />
-    <!-- Scalar: UI de documentacion compatible con .NET 10 (reemplaza Swashbuckle) -->
-    <PackageReference Include="Scalar.AspNetCore"                             Version="2.5.14" />
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices"  Version="10.0.0" />
   </ItemGroup>
 
