@@ -4,7 +4,9 @@
     Publica, instala y arranca los 3 microservicios como Windows Services.
 
 .DESCRIPTION
-    - Compila cada proyecto en modo Release (self-contained, win-x64)
+    - Compila cada proyecto en modo Release (framework-dependent, win-x64)
+      NOTA: framework-dependent es REQUERIDO para que el profiler CLR de Instana
+      pueda inyectarse. Self-contained empaqueta su propio runtime y bloquea la inyeccion.
     - Crea el servicio con New-Service
     - Configura ASPNETCORE_URLS=http://0.0.0.0:<puerto> para acceso externo
     - Abre los puertos 8080/8081/8082 en el Firewall de Windows
@@ -34,8 +36,19 @@ Write-Host "[i] Raiz del repositorio: $repoRoot" -ForegroundColor DarkGray
 Write-Host "[i] Directorio de instalacion: $InstallDir`n" -ForegroundColor DarkGray
 
 # ----------------------------------------------------------------
+# Verificar que .NET 8 runtime esta instalado (requerido por framework-dependent)
+# ----------------------------------------------------------------
+$runtimeInstalled = dotnet --list-runtimes 2>$null | Select-String 'Microsoft.AspNetCore.App 8\.'
+if (-not $runtimeInstalled) {
+    Write-Warning "No se detecto el runtime ASP.NET Core 8 instalado."
+    Write-Warning "Descargalo desde: https://dotnet.microsoft.com/download/dotnet/8.0"
+    Write-Warning "Instala el 'ASP.NET Core Runtime 8.x (x64)' antes de continuar."
+    $resp = Read-Host "Continuar de todos modos? (s/N)"
+    if ($resp -notmatch '^[sS]$') { exit 1 }
+}
+
+# ----------------------------------------------------------------
 # Definicion de los 3 servicios
-# Url usa 0.0.0.0 para escuchar en todas las interfaces (acceso externo)
 # Orden: Inventory y Notification primero, Order al final (depende de ambos)
 # ----------------------------------------------------------------
 $services = @(
@@ -87,12 +100,12 @@ foreach ($svc in $services) {
         exit 1
     }
 
-    # ---- 2. Publicar ----
+    # ---- 2. Publicar (framework-dependent: NO --self-contained) ----
     Write-Host "`n[>>] Publicando $($svc.Name)..." -ForegroundColor Yellow
     & dotnet publish $svc.Project `
         --configuration Release `
         --runtime win-x64 `
-        --self-contained true `
+        --no-self-contained `
         --output $svcDir
 
     if ($LASTEXITCODE -ne 0) {
@@ -128,7 +141,6 @@ foreach ($svc in $services) {
         -StartupType    Automatic
 
     # ---- 5. ASPNETCORE_URLS en el registro del servicio ----
-    # Usar 0.0.0.0 para que Kestrel escuche en todas las interfaces de red
     $regPath  = "HKLM:\SYSTEM\CurrentControlSet\Services\$($svc.Name)"
     $envValue = @("ASPNETCORE_URLS=$($svc.Url)")
     New-ItemProperty -Path $regPath -Name 'Environment' `
@@ -136,18 +148,16 @@ foreach ($svc in $services) {
     Write-Host "    ASPNETCORE_URLS=$($svc.Url)" -ForegroundColor DarkGray
 
     # ---- 6. Abrir puerto en Windows Firewall ----
-    $fwRuleName = "InstanaLab-$($svc.Port)-TCP"
+    $fwRuleName   = "InstanaLab-$($svc.Port)-TCP"
     $existingRule = Get-NetFirewallRule -DisplayName $fwRuleName -ErrorAction SilentlyContinue
-    if ($existingRule) {
-        Remove-NetFirewallRule -DisplayName $fwRuleName
-    }
+    if ($existingRule) { Remove-NetFirewallRule -DisplayName $fwRuleName }
     New-NetFirewallRule `
-        -DisplayName  $fwRuleName `
-        -Direction    Inbound `
-        -Protocol     TCP `
-        -LocalPort    $svc.Port `
-        -Action       Allow `
-        -Profile      Any | Out-Null
+        -DisplayName $fwRuleName `
+        -Direction   Inbound `
+        -Protocol    TCP `
+        -LocalPort   $svc.Port `
+        -Action      Allow `
+        -Profile     Any | Out-Null
     Write-Host "    Firewall: puerto TCP $($svc.Port) abierto" -ForegroundColor DarkGray
 
     # ---- 7. Iniciar servicio ----
@@ -166,10 +176,14 @@ foreach ($svc in $services) {
 Write-Host "`n========================================" -ForegroundColor Cyan
 Write-Host " Instalacion completada" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
-$ip = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.InterfaceAlias -notlike '*Loopback*' } | Select-Object -First 1).IPAddress
+$ip = (Get-NetIPAddress -AddressFamily IPv4 |
+       Where-Object { $_.InterfaceAlias -notlike '*Loopback*' } |
+       Select-Object -First 1).IPAddress
 Write-Host "  IP del servidor       : $ip"
 Write-Host "  OrderService          : http://${ip}:8080/swagger"
 Write-Host "  InventoryService      : http://${ip}:8081/swagger"
 Write-Host "  NotificationService   : http://${ip}:8082/swagger"
 Write-Host ""
-Write-Host "Ejecuta .\scripts\open-firewall.ps1 si necesitas reabrir los puertos por separado."
+Write-Host "IMPORTANTE: Las variables del profiler CLR de Instana deben estar"
+Write-Host "configuradas en el registro de cada servicio para ver trazas."
+Write-Host "Ejecuta .\scripts\configure-instana-profiler.ps1 si aun no las has configurado."
