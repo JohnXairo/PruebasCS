@@ -15,8 +15,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- OpenAPI built-in de .NET 9/10 -->
     <PackageReference Include="Microsoft.AspNetCore.OpenApi"                  Version="10.0.0" />
-    <PackageReference Include="Swashbuckle.AspNetCore"                        Version="6.9.0" />
+    <!-- Scalar: UI de documentacion compatible con .NET 10 (reemplaza Swashbuckle) -->
+    <PackageReference Include="Scalar.AspNetCore"                             Version="2.5.14" />
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices"  Version="10.0.0" />
   </ItemGroup>
 

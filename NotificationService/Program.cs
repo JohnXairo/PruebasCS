@@ -8,13 +8,13 @@ builder.Host.UseWindowsService(options =>
     options.ServiceName = "InstanaLab-NotificationService";
 });
 
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddOpenApi();
 
 var app = builder.Build();
 
-app.UseSwagger();
-app.UseSwaggerUI();
+// Scalar UI: http://localhost:8082/scalar/v1
+app.MapOpenApi();
+app.MapScalarApiReference();
 
 // Historial en memoria
 var notifications = new List<NotificationRecord>();
@@ -36,7 +36,6 @@ app.MapPost("/notifications", (NotificationRequest request) =>
 
     notifications.Add(record);
 
-    // Simulacion: en produccion aqui iria SMTP / SendGrid / etc.
     Console.WriteLine($"[Notification] To: {record.To} | Subject: {record.Subject}");
 
     return Results.Created($"/notifications/{record.Id}", record);

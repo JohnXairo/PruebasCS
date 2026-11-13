@@ -8,13 +8,13 @@ builder.Host.UseWindowsService(options =>
     options.ServiceName = "InstanaLab-InventoryService";
 });
 
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddOpenApi();
 
 var app = builder.Build();
 
-app.UseSwagger();
-app.UseSwaggerUI();
+// Scalar UI: http://localhost:8081/scalar/v1
+app.MapOpenApi();
+app.MapScalarApiReference();
 
 // Inventario en memoria
 var catalog = new Dictionary<int, InventoryProduct>
