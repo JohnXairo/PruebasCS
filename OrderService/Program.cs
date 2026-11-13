@@ -1,14 +1,23 @@
 var builder = WebApplication.CreateBuilder(args);
 
+// -------------------------------------------------------
+// Soporte Windows Service: permite arrancar/detener
+// desde el SCM (services.msc / sc.exe)
+// -------------------------------------------------------
+builder.Host.UseWindowsService(options =>
+{
+    options.ServiceName = "InstanaLab-OrderService";
+});
+
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddHttpClient("InventoryClient", client =>
 {
-    client.BaseAddress = new Uri(builder.Configuration["Services:InventoryService"] ?? "http://inventoryservice:8081");
+    client.BaseAddress = new Uri(builder.Configuration["Services:InventoryService"] ?? "http://localhost:8081");
 });
 builder.Services.AddHttpClient("NotificationClient", client =>
 {
-    client.BaseAddress = new Uri(builder.Configuration["Services:NotificationService"] ?? "http://notificationservice:8082");
+    client.BaseAddress = new Uri(builder.Configuration["Services:NotificationService"] ?? "http://localhost:8082");
 });
 
 var app = builder.Build();
