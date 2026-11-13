@@ -1,5 +1,13 @@
 var builder = WebApplication.CreateBuilder(args);
 
+// -------------------------------------------------------
+// Soporte Windows Service
+// -------------------------------------------------------
+builder.Host.UseWindowsService(options =>
+{
+    options.ServiceName = "InstanaLab-NotificationService";
+});
+
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
