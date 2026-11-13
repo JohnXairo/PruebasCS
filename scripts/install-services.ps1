@@ -6,7 +6,7 @@
 .DESCRIPTION
     - Compila cada proyecto en modo Release (framework-dependent, win-x64)
       NOTA: framework-dependent es REQUERIDO para que el profiler CLR de Instana
-      pueda inyectarse. Self-contained empaqueta su propio runtime y bloquea la inyeccion.
+      pueda inyectarse. Self-contained bloquea la inyeccion del profiler.
     - Crea el servicio con New-Service
     - Configura ASPNETCORE_URLS=http://0.0.0.0:<puerto> para acceso externo
     - Abre los puertos 8080/8081/8082 en el Firewall de Windows
@@ -17,7 +17,6 @@
     Por defecto: C:\InstanaLab
 
 .EXAMPLE
-    # Desde PowerShell como Administrador, en la raiz del repo:
     .\scripts\install-services.ps1
     .\scripts\install-services.ps1 -InstallDir 'D:\Servicios'
 #>
@@ -36,15 +35,17 @@ Write-Host "[i] Raiz del repositorio: $repoRoot" -ForegroundColor DarkGray
 Write-Host "[i] Directorio de instalacion: $InstallDir`n" -ForegroundColor DarkGray
 
 # ----------------------------------------------------------------
-# Verificar que .NET 8 runtime esta instalado (requerido por framework-dependent)
+# Verificar que .NET 10 runtime esta instalado (requerido por framework-dependent)
 # ----------------------------------------------------------------
-$runtimeInstalled = dotnet --list-runtimes 2>$null | Select-String 'Microsoft.AspNetCore.App 8\.'
+$runtimeInstalled = dotnet --list-runtimes 2>$null | Select-String 'Microsoft\.AspNetCore\.App 10\.'
 if (-not $runtimeInstalled) {
-    Write-Warning "No se detecto el runtime ASP.NET Core 8 instalado."
-    Write-Warning "Descargalo desde: https://dotnet.microsoft.com/download/dotnet/8.0"
-    Write-Warning "Instala el 'ASP.NET Core Runtime 8.x (x64)' antes de continuar."
+    Write-Warning "No se detecto el runtime ASP.NET Core 10 instalado."
+    Write-Warning "Descargalo desde: https://dotnet.microsoft.com/download/dotnet/10.0"
+    Write-Warning "Instala el 'ASP.NET Core Runtime 10.x (x64)' antes de continuar."
     $resp = Read-Host "Continuar de todos modos? (s/N)"
     if ($resp -notmatch '^[sS]$') { exit 1 }
+} else {
+    Write-Host "[OK] Runtime detectado: $($runtimeInstalled -join ', ')" -ForegroundColor Green
 }
 
 # ----------------------------------------------------------------
@@ -100,7 +101,7 @@ foreach ($svc in $services) {
         exit 1
     }
 
-    # ---- 2. Publicar (framework-dependent: NO --self-contained) ----
+    # ---- 2. Publicar (framework-dependent: --no-self-contained) ----
     Write-Host "`n[>>] Publicando $($svc.Name)..." -ForegroundColor Yellow
     & dotnet publish $svc.Project `
         --configuration Release `
@@ -184,6 +185,4 @@ Write-Host "  OrderService          : http://${ip}:8080/swagger"
 Write-Host "  InventoryService      : http://${ip}:8081/swagger"
 Write-Host "  NotificationService   : http://${ip}:8082/swagger"
 Write-Host ""
-Write-Host "IMPORTANTE: Las variables del profiler CLR de Instana deben estar"
-Write-Host "configuradas en el registro de cada servicio para ver trazas."
-Write-Host "Ejecuta .\scripts\configure-instana-profiler.ps1 si aun no las has configurado."
+Write-Host "Para ver los servicios: services.msc  o  Get-Service 'InstanaLab-*'"
