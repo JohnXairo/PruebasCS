@@ -49,6 +49,43 @@ if (-not $runtimeInstalled) {
 }
 
 # ----------------------------------------------------------------
+# Funcion: eliminar servicio y esperar confirmacion del SCM
+# El SCM marca el servicio "pending delete" hasta que todos los handles
+# se cierren (services.msc, etc.). Hay que esperar activamente.
+# ----------------------------------------------------------------
+function Remove-ServiceAndWait {
+    param([string]$Name, [int]$TimeoutSeconds = 30)
+
+    $svc = Get-Service -Name $Name -ErrorAction SilentlyContinue
+    if (-not $svc) { return }
+
+    if ($svc.Status -eq 'Running') {
+        Write-Host "    Deteniendo $Name..." -ForegroundColor DarkYellow
+        Stop-Service -Name $Name -Force
+        Start-Sleep -Seconds 2
+    }
+
+    Write-Host "    Eliminando $Name..." -ForegroundColor DarkYellow
+    & "$env:SystemRoot\System32\sc.exe" delete $Name | Out-Null
+
+    # Esperar activamente hasta que el SCM libere el servicio
+    $elapsed = 0
+    while ((Get-Service -Name $Name -ErrorAction SilentlyContinue) -and $elapsed -lt $TimeoutSeconds) {
+        Write-Host "    Esperando que el SCM libere '$Name'... ($elapsed s)" -ForegroundColor DarkGray
+        Start-Sleep -Seconds 2
+        $elapsed += 2
+    }
+
+    if (Get-Service -Name $Name -ErrorAction SilentlyContinue) {
+        Write-Warning "El servicio '$Name' sigue marcado para borrar."
+        Write-Warning "Cierra services.msc si esta abierto, o reinicia el servidor y vuelve a ejecutar el script."
+        throw "Timeout esperando eliminacion de '$Name'"
+    }
+
+    Write-Host "    Servicio eliminado correctamente." -ForegroundColor DarkGray
+}
+
+# ----------------------------------------------------------------
 # Definicion de los 3 servicios
 # Orden: Inventory y Notification primero, Order al final (depende de ambos)
 # ----------------------------------------------------------------
@@ -120,16 +157,10 @@ foreach ($svc in $services) {
     }
     Write-Host "    Exe publicado: $exePath" -ForegroundColor DarkGray
 
-    # ---- 3. Desinstalar si ya existe ----
-    $existing = Get-Service -Name $svc.Name -ErrorAction SilentlyContinue
-    if ($existing) {
-        Write-Host "[!] Servicio ya existe, deteniendo y eliminando..." -ForegroundColor DarkYellow
-        if ($existing.Status -eq 'Running') {
-            Stop-Service -Name $svc.Name -Force
-            Start-Sleep -Seconds 2
-        }
-        & "$env:SystemRoot\System32\sc.exe" delete $svc.Name
-        Start-Sleep -Seconds 3
+    # ---- 3. Desinstalar si ya existe (con espera activa al SCM) ----
+    if (Get-Service -Name $svc.Name -ErrorAction SilentlyContinue) {
+        Write-Host "[!] Servicio ya existe, eliminando..." -ForegroundColor DarkYellow
+        Remove-ServiceAndWait -Name $svc.Name
     }
 
     # ---- 4. Crear servicio con New-Service ----
