@@ -6,17 +6,19 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>OrderService</RootNamespace>
     <AssemblyName>OrderService</AssemblyName>
-    <!-- Self-contained para no depender de runtime instalado -->
-    <SelfContained>true</SelfContained>
+    <!--
+      Framework-dependent: usa el runtime .NET instalado en el sistema.
+      REQUERIDO para que el profiler CLR de Instana pueda inyectarse correctamente.
+      Self-contained empaqueta su propio runtime y bloquea la inyeccion del profiler.
+    -->
+    <SelfContained>false</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
-    <PublishSingleFile>true</PublishSingleFile>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.OpenApi"         Version="8.0.0" />
-    <PackageReference Include="Swashbuckle.AspNetCore"               Version="6.5.0" />
-    <!-- Soporte nativo Windows Service -->
-    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="8.0.0" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi"                  Version="8.0.0" />
+    <PackageReference Include="Swashbuckle.AspNetCore"                        Version="6.5.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices"  Version="8.0.0" />
   </ItemGroup>
 
 </Project>
