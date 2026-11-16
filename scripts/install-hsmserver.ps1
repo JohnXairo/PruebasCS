@@ -1,14 +1,13 @@
 #Requires -RunAsAdministrator
 <#
 .SYNOPSIS
-    Compila e instala HsmServer (Rust) como Windows Service.
+    Compila e instala HsmServer (Rust) como Windows Service nativo.
 
 .DESCRIPTION
-    - Requiere Rust toolchain instalado (rustup + cargo)
-    - Compila en modo release
-    - Registra como Windows Service usando un wrapper CMD que inyecta
-      las variables de entorno antes de lanzar el exe (los binarios Rust
-      nativos no leen el registro Environment del SCM directamente)
+    - Requiere Rust toolchain (rustup + cargo)
+    - Compila con soporte nativo Windows Service (crate windows-service)
+    - Registra el exe directamente como servicio (sin wrappers)
+    - Las variables de entorno se configuran en el registro del SCM
     - Abre el puerto 8083 en el Firewall
 
 .PARAMETER InstallDir
@@ -28,7 +27,6 @@ $scriptDir  = if ($PSScriptRoot) { $PSScriptRoot } else { $PWD.Path }
 $repoRoot   = (Resolve-Path (Join-Path $scriptDir '..')).Path
 $projectDir = Join-Path $repoRoot 'HsmServer'
 $exePath    = Join-Path $InstallDir 'hsmserver.exe'
-$wrapperPath = Join-Path $InstallDir 'hsmserver-svc.cmd'
 $svcName    = 'InstanaLab-HsmServer'
 $port       = 8083
 
@@ -58,20 +56,6 @@ $compiledExe = Join-Path $projectDir 'target\x86_64-pc-windows-msvc\release\hsms
 Copy-Item $compiledExe $exePath -Force
 Write-Host "    Exe copiado: $exePath" -ForegroundColor DarkGray
 
-# ---- Generar wrapper CMD que inyecta variables de entorno ----
-# Los binarios Rust nativos no leen el registro SCM Environment directamente.
-# El wrapper setea las variables y lanza el exe en primer plano (no en background)
-# para que el SCM pueda controlar el proceso correctamente.
-$wrapperContent = @"
-@echo off
-set HSM_HOST=0.0.0.0
-set HSM_PORT=$port
-set RUST_LOG=info
-"$exePath"
-"@
-Set-Content -Path $wrapperPath -Value $wrapperContent -Encoding ASCII
-Write-Host "    Wrapper creado: $wrapperPath" -ForegroundColor DarkGray
-
 # ---- Desinstalar si existe ----
 $existing = Get-Service -Name $svcName -ErrorAction SilentlyContinue
 if ($existing) {
@@ -88,17 +72,21 @@ if ($existing) {
     }
 }
 
-# ---- Crear servicio apuntando al wrapper CMD ----
-# binPath: cmd.exe /c wrapper.cmd  — el SCM lanza cmd que a su vez lanza el exe
-$binPath = "cmd.exe /c `"$wrapperPath`""
+# ---- Crear servicio (exe nativo Windows Service) ----
 Write-Host "[+] Creando servicio: $svcName" -ForegroundColor Green
-& "$env:SystemRoot\System32\sc.exe" create $svcName `
-    binPath= $binPath `
-    DisplayName= "Instana Lab - HSM Server (Rust)" `
-    start= auto
+New-Service `
+    -Name           $svcName `
+    -DisplayName    'Instana Lab - HSM Server (Rust)' `
+    -Description    'Servicio HSM simulado en Rust para laboratorio Instana' `
+    -BinaryPathName "`"$exePath`"" `
+    -StartupType    Automatic
 
-& "$env:SystemRoot\System32\sc.exe" description $svcName `
-    "Servicio HSM simulado en Rust para laboratorio Instana"
+# ---- Variables de entorno en registro del servicio ----
+$regPath = "HKLM:\SYSTEM\CurrentControlSet\Services\$svcName"
+New-ItemProperty -Path $regPath -Name 'Environment' `
+    -Value @("HSM_HOST=0.0.0.0", "HSM_PORT=$port", "RUST_LOG=info") `
+    -PropertyType MultiString -Force | Out-Null
+Write-Host "    HSM_HOST=0.0.0.0, HSM_PORT=$port, RUST_LOG=info" -ForegroundColor DarkGray
 
 # ---- Firewall ----
 $fwRule = "InstanaLab-$port-TCP"
@@ -132,3 +120,5 @@ Write-Host "    GET  http://${ip}:$port/hsm/keys"
 Write-Host "    POST http://${ip}:$port/hsm/keys"
 Write-Host "    POST http://${ip}:$port/hsm/sign"
 Write-Host "    POST http://${ip}:$port/hsm/encrypt"
+Write-Host ""
+Write-Host "Para correr en modo consola (pruebas): set HSM_CONSOLE=1 && hsmserver.exe"

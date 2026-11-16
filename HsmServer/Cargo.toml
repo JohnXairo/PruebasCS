@@ -17,5 +17,6 @@ env_logger  = "0.11"
 log         = "0.4"
 rand        = "0.8"
 base64      = "0.22"
-# tokio requerido explicitamente para tokio::time::sleep
-tokio       = { version = "1", features = ["time"] }
+tokio       = { version = "1", features = ["time", "rt-multi-thread", "macros"] }
+# Soporte nativo Windows Service
+windows-service = "0.7"

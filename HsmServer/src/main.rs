@@ -6,14 +6,14 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 // ---------------------------------------------------------------------------
-// Modelos de request / response
+// Modelos
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Deserialize)]
 struct SignRequest {
     key_id: String,
-    algorithm: String, // e.g. "RSA-SHA256", "ECDSA-P256"
-    payload: String,   // base64-encoded data to sign
+    algorithm: String,
+    payload: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -21,7 +21,7 @@ struct SignResponse {
     operation_id: String,
     key_id: String,
     algorithm: String,
-    signature: String, // base64-encoded simulated signature
+    signature: String,
     timestamp: String,
     status: String,
 }
@@ -29,22 +29,22 @@ struct SignResponse {
 #[derive(Debug, Deserialize)]
 struct EncryptRequest {
     key_id: String,
-    algorithm: String, // e.g. "AES-256-GCM"
-    plaintext: String, // base64-encoded plaintext
+    algorithm: String,
+    plaintext: String,
 }
 
 #[derive(Debug, Serialize)]
 struct EncryptResponse {
     operation_id: String,
     key_id: String,
-    ciphertext: String, // base64-encoded simulated ciphertext
+    ciphertext: String,
     timestamp: String,
     status: String,
 }
 
 #[derive(Debug, Deserialize)]
 struct GenerateKeyRequest {
-    key_type: String,  // e.g. "RSA-2048", "AES-256", "EC-P256"
+    key_type: String,
     label: String,
 }
 
@@ -54,7 +54,7 @@ struct GenerateKeyResponse {
     key_id: String,
     key_type: String,
     label: String,
-    public_key: Option<String>, // base64, solo para claves asimetricas
+    public_key: Option<String>,
     created_at: String,
     status: String,
 }
@@ -77,10 +77,9 @@ struct HealthResponse {
 }
 
 // ---------------------------------------------------------------------------
-// Handlers
+// Handlers HTTP
 // ---------------------------------------------------------------------------
 
-/// GET /health
 async fn health() -> impl Responder {
     HttpResponse::Ok().json(HealthResponse {
         service: "HsmServer".into(),
@@ -90,53 +89,24 @@ async fn health() -> impl Responder {
     })
 }
 
-/// GET /hsm/keys  — lista de claves simuladas
 async fn list_keys() -> impl Responder {
     let keys = vec![
-        KeyInfo {
-            key_id: "key-rsa-001".into(),
-            key_type: "RSA-2048".into(),
-            label: "signing-key-prod".into(),
-            created_at: "2026-01-15T08:00:00Z".into(),
-            status: "ACTIVE".into(),
-        },
-        KeyInfo {
-            key_id: "key-aes-001".into(),
-            key_type: "AES-256".into(),
-            label: "encryption-key-prod".into(),
-            created_at: "2026-01-15T08:01:00Z".into(),
-            status: "ACTIVE".into(),
-        },
-        KeyInfo {
-            key_id: "key-ec-001".into(),
-            key_type: "EC-P256".into(),
-            label: "ecdsa-key-prod".into(),
-            created_at: "2026-02-10T10:00:00Z".into(),
-            status: "ACTIVE".into(),
-        },
+        KeyInfo { key_id: "key-rsa-001".into(), key_type: "RSA-2048".into(), label: "signing-key-prod".into(),    created_at: "2026-01-15T08:00:00Z".into(), status: "ACTIVE".into() },
+        KeyInfo { key_id: "key-aes-001".into(), key_type: "AES-256".into(),  label: "encryption-key-prod".into(), created_at: "2026-01-15T08:01:00Z".into(), status: "ACTIVE".into() },
+        KeyInfo { key_id: "key-ec-001".into(),  key_type: "EC-P256".into(),  label: "ecdsa-key-prod".into(),     created_at: "2026-02-10T10:00:00Z".into(), status: "ACTIVE".into() },
     ];
     HttpResponse::Ok().json(keys)
 }
 
-/// POST /hsm/keys  — generar una nueva clave (simulada)
 async fn generate_key(body: web::Json<GenerateKeyRequest>) -> impl Responder {
-    log::info!("generate_key: type={} label={}", body.key_type, body.label);
-
     let mut rng = rand::thread_rng();
-    let mut key_bytes = vec![0u8; 16];
-    rng.fill_bytes(&mut key_bytes);
     let key_id = format!("key-{}", Uuid::new_v4());
-
-    // Claves asimetricas exponen una clave publica simulada
     let public_key = match body.key_type.as_str() {
         t if t.starts_with("RSA") || t.starts_with("EC") => {
-            let mut pub_bytes = vec![0u8; 64];
-            rng.fill_bytes(&mut pub_bytes);
-            Some(B64.encode(&pub_bytes))
+            let mut b = vec![0u8; 64]; rng.fill_bytes(&mut b); Some(B64.encode(&b))
         }
         _ => None,
     };
-
     HttpResponse::Created().json(GenerateKeyResponse {
         operation_id: Uuid::new_v4().to_string(),
         key_id,
@@ -148,59 +118,39 @@ async fn generate_key(body: web::Json<GenerateKeyRequest>) -> impl Responder {
     })
 }
 
-/// POST /hsm/sign  — firmar datos (simulado)
 async fn sign(body: web::Json<SignRequest>) -> impl Responder {
-    log::info!("sign: key_id={} algorithm={}", body.key_id, body.algorithm);
-
-    // Simular latencia de operacion HSM real (no bloqueante)
     tokio::time::sleep(std::time::Duration::from_millis(5)).await;
-
     let mut rng = rand::thread_rng();
-    let mut sig_bytes = vec![0u8; 64];
-    rng.fill_bytes(&mut sig_bytes);
-
+    let mut sig = vec![0u8; 64]; rng.fill_bytes(&mut sig);
     HttpResponse::Ok().json(SignResponse {
         operation_id: Uuid::new_v4().to_string(),
         key_id: body.key_id.clone(),
         algorithm: body.algorithm.clone(),
-        signature: B64.encode(&sig_bytes),
+        signature: B64.encode(&sig),
         timestamp: Utc::now().to_rfc3339(),
         status: "SUCCESS".into(),
     })
 }
 
-/// POST /hsm/encrypt  — cifrar datos (simulado)
 async fn encrypt(body: web::Json<EncryptRequest>) -> impl Responder {
-    log::info!("encrypt: key_id={} algorithm={}", body.key_id, body.algorithm);
-
     tokio::time::sleep(std::time::Duration::from_millis(3)).await;
-
-    // Simular ciphertext: bytes aleatorios del mismo tamano que el input
-    let input_len = B64
-        .decode(&body.plaintext)
-        .map(|b| b.len())
-        .unwrap_or(32);
-
+    let input_len = B64.decode(&body.plaintext).map(|b| b.len()).unwrap_or(32);
     let mut rng = rand::thread_rng();
-    let mut cipher_bytes = vec![0u8; input_len + 16]; // +16 simula GCM tag
-    rng.fill_bytes(&mut cipher_bytes);
-
+    let mut cipher = vec![0u8; input_len + 16]; rng.fill_bytes(&mut cipher);
     HttpResponse::Ok().json(EncryptResponse {
         operation_id: Uuid::new_v4().to_string(),
         key_id: body.key_id.clone(),
-        ciphertext: B64.encode(&cipher_bytes),
+        ciphertext: B64.encode(&cipher),
         timestamp: Utc::now().to_rfc3339(),
         status: "SUCCESS".into(),
     })
 }
 
 // ---------------------------------------------------------------------------
-// Main
+// Logica del servidor HTTP (compartida entre modo servicio y modo consola)
 // ---------------------------------------------------------------------------
 
-#[actix_web::main]
-async fn main() -> std::io::Result<()> {
-    // Inicializar logger (RUST_LOG=info por defecto)
+pub fn run_server() -> std::io::Result<()> {
     env_logger::Builder::from_env(
         env_logger::Env::default().default_filter_or("info")
     ).init();
@@ -209,20 +159,135 @@ async fn main() -> std::io::Result<()> {
     let port: u16 = std::env::var("HSM_PORT")
         .unwrap_or_else(|_| "8083".into())
         .parse()
-        .expect("HSM_PORT debe ser un numero valido");
+        .unwrap_or(8083);
 
     log::info!("HsmServer iniciando en http://{}:{}", host, port);
 
-    HttpServer::new(|| {
-        App::new()
-            .wrap(Logger::default())
-            .route("/health",      web::get().to(health))
-            .route("/hsm/keys",    web::get().to(list_keys))
-            .route("/hsm/keys",    web::post().to(generate_key))
-            .route("/hsm/sign",    web::post().to(sign))
-            .route("/hsm/encrypt", web::post().to(encrypt))
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(async {
+        HttpServer::new(|| {
+            App::new()
+                .wrap(Logger::default())
+                .route("/health",      web::get().to(health))
+                .route("/hsm/keys",    web::get().to(list_keys))
+                .route("/hsm/keys",    web::post().to(generate_key))
+                .route("/hsm/sign",    web::post().to(sign))
+                .route("/hsm/encrypt", web::post().to(encrypt))
+        })
+        .bind((host.as_str(), port))?
+        .run()
+        .await
     })
-    .bind((host.as_str(), port))?
-    .run()
-    .await
+}
+
+// ---------------------------------------------------------------------------
+// Windows Service
+// ---------------------------------------------------------------------------
+
+#[cfg(windows)]
+mod windows_service_impl {
+    use windows_service::{
+        define_windows_service,
+        service::{
+            ServiceControl, ServiceControlAccept, ServiceExitCode,
+            ServiceState, ServiceStatus, ServiceType,
+        },
+        service_control_handler::{self, ServiceControlHandlerResult},
+        service_dispatcher,
+    };
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    const SERVICE_NAME: &str = "InstanaLab-HsmServer";
+
+    define_windows_service!(ffi_service_main, service_main);
+
+    pub fn run_as_service() -> windows_service::Result<()> {
+        service_dispatcher::start(SERVICE_NAME, ffi_service_main)
+    }
+
+    fn service_main(_args: Vec<std::ffi::OsString>) {
+        let (shutdown_tx, shutdown_rx) = mpsc::channel();
+
+        let status_handle = service_control_handler::register(
+            SERVICE_NAME,
+            move |ctrl| match ctrl {
+                ServiceControl::Stop => {
+                    let _ = shutdown_tx.send(());
+                    ServiceControlHandlerResult::NoError
+                }
+                ServiceControl::Interrogate => ServiceControlHandlerResult::NoError,
+                _ => ServiceControlHandlerResult::NotImplemented,
+            },
+        ).unwrap();
+
+        // Reportar: iniciando
+        status_handle.set_service_status(ServiceStatus {
+            service_type: ServiceType::OWN_PROCESS,
+            current_state: ServiceState::StartPending,
+            controls_accepted: ServiceControlAccept::empty(),
+            exit_code: ServiceExitCode::Win32(0),
+            checkpoint: 0,
+            wait_hint: Duration::from_secs(10),
+            process_id: None,
+        }).unwrap();
+
+        // Lanzar el servidor HTTP en un hilo separado
+        std::thread::spawn(|| {
+            if let Err(e) = crate::run_server() {
+                log::error!("Error en servidor HTTP: {}", e);
+            }
+        });
+
+        // Reportar: corriendo
+        status_handle.set_service_status(ServiceStatus {
+            service_type: ServiceType::OWN_PROCESS,
+            current_state: ServiceState::Running,
+            controls_accepted: ServiceControlAccept::STOP,
+            exit_code: ServiceExitCode::Win32(0),
+            checkpoint: 0,
+            wait_hint: Duration::from_secs(0),
+            process_id: None,
+        }).unwrap();
+
+        // Esperar senal de stop
+        let _ = shutdown_rx.recv();
+
+        // Reportar: deteniendo
+        status_handle.set_service_status(ServiceStatus {
+            service_type: ServiceType::OWN_PROCESS,
+            current_state: ServiceState::Stopped,
+            controls_accepted: ServiceControlAccept::empty(),
+            exit_code: ServiceExitCode::Win32(0),
+            checkpoint: 0,
+            wait_hint: Duration::from_secs(0),
+            process_id: None,
+        }).unwrap();
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Entry point
+// ---------------------------------------------------------------------------
+
+fn main() {
+    #[cfg(windows)]
+    {
+        // Si se lanza desde el SCM, correr como servicio.
+        // Si se lanza desde consola (interactivo), correr directo.
+        if std::env::var("HSM_CONSOLE").is_ok() {
+            run_server().unwrap();
+        } else {
+            match windows_service_impl::run_as_service() {
+                Ok(_) => {}
+                Err(_) => {
+                    // Fallo al conectar con SCM: probablemente modo consola
+                    run_server().unwrap();
+                }
+            }
+        }
+    }
+
+    #[cfg(not(windows))]
+    run_server().unwrap();
 }
