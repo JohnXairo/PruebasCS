@@ -6,7 +6,9 @@
 .DESCRIPTION
     - Requiere Rust toolchain instalado (rustup + cargo)
     - Compila en modo release
-    - Registra como Windows Service en el puerto 8083
+    - Registra como Windows Service usando un wrapper CMD que inyecta
+      las variables de entorno antes de lanzar el exe (los binarios Rust
+      nativos no leen el registro Environment del SCM directamente)
     - Abre el puerto 8083 en el Firewall
 
 .PARAMETER InstallDir
@@ -22,10 +24,11 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$scriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { $PWD.Path }
-$repoRoot  = (Resolve-Path (Join-Path $scriptDir '..')).Path
+$scriptDir  = if ($PSScriptRoot) { $PSScriptRoot } else { $PWD.Path }
+$repoRoot   = (Resolve-Path (Join-Path $scriptDir '..')).Path
 $projectDir = Join-Path $repoRoot 'HsmServer'
 $exePath    = Join-Path $InstallDir 'hsmserver.exe'
+$wrapperPath = Join-Path $InstallDir 'hsmserver-svc.cmd'
 $svcName    = 'InstanaLab-HsmServer'
 $port       = 8083
 
@@ -55,6 +58,20 @@ $compiledExe = Join-Path $projectDir 'target\x86_64-pc-windows-msvc\release\hsms
 Copy-Item $compiledExe $exePath -Force
 Write-Host "    Exe copiado: $exePath" -ForegroundColor DarkGray
 
+# ---- Generar wrapper CMD que inyecta variables de entorno ----
+# Los binarios Rust nativos no leen el registro SCM Environment directamente.
+# El wrapper setea las variables y lanza el exe en primer plano (no en background)
+# para que el SCM pueda controlar el proceso correctamente.
+$wrapperContent = @"
+@echo off
+set HSM_HOST=0.0.0.0
+set HSM_PORT=$port
+set RUST_LOG=info
+"$exePath"
+"@
+Set-Content -Path $wrapperPath -Value $wrapperContent -Encoding ASCII
+Write-Host "    Wrapper creado: $wrapperPath" -ForegroundColor DarkGray
+
 # ---- Desinstalar si existe ----
 $existing = Get-Service -Name $svcName -ErrorAction SilentlyContinue
 if ($existing) {
@@ -66,30 +83,27 @@ if ($existing) {
     & "$env:SystemRoot\System32\sc.exe" delete $svcName
     $elapsed = 0
     while ((Get-Service -Name $svcName -ErrorAction SilentlyContinue) -and $elapsed -lt 30) {
+        Write-Host "    Esperando SCM... ($elapsed s)" -ForegroundColor DarkGray
         Start-Sleep -Seconds 2; $elapsed += 2
     }
 }
 
-# ---- Crear servicio ----
+# ---- Crear servicio apuntando al wrapper CMD ----
+# binPath: cmd.exe /c wrapper.cmd  — el SCM lanza cmd que a su vez lanza el exe
+$binPath = "cmd.exe /c `"$wrapperPath`""
 Write-Host "[+] Creando servicio: $svcName" -ForegroundColor Green
-New-Service `
-    -Name           $svcName `
-    -DisplayName    'Instana Lab - HSM Server (Rust)' `
-    -Description    'Servicio HSM simulado en Rust para laboratorio Instana' `
-    -BinaryPathName "`"$exePath`"" `
-    -StartupType    Automatic
+& "$env:SystemRoot\System32\sc.exe" create $svcName `
+    binPath= $binPath `
+    DisplayName= "Instana Lab - HSM Server (Rust)" `
+    start= auto
 
-# ---- Variables de entorno en registro ----
-$regPath = "HKLM:\SYSTEM\CurrentControlSet\Services\$svcName"
-New-ItemProperty -Path $regPath -Name 'Environment' `
-    -Value @("HSM_HOST=0.0.0.0", "HSM_PORT=$port", "RUST_LOG=info") `
-    -PropertyType MultiString -Force | Out-Null
-Write-Host "    HSM_HOST=0.0.0.0, HSM_PORT=$port" -ForegroundColor DarkGray
+& "$env:SystemRoot\System32\sc.exe" description $svcName `
+    "Servicio HSM simulado en Rust para laboratorio Instana"
 
 # ---- Firewall ----
 $fwRule = "InstanaLab-$port-TCP"
-$existing = Get-NetFirewallRule -DisplayName $fwRule -ErrorAction SilentlyContinue
-if ($existing) { Remove-NetFirewallRule -DisplayName $fwRule }
+$fwExisting = Get-NetFirewallRule -DisplayName $fwRule -ErrorAction SilentlyContinue
+if ($fwExisting) { Remove-NetFirewallRule -DisplayName $fwRule }
 New-NetFirewallRule -DisplayName $fwRule -Direction Inbound -Protocol TCP `
     -LocalPort $port -Action Allow -Profile Any | Out-Null
 Write-Host "    Firewall: puerto TCP $port abierto" -ForegroundColor DarkGray
@@ -97,7 +111,7 @@ Write-Host "    Firewall: puerto TCP $port abierto" -ForegroundColor DarkGray
 # ---- Iniciar ----
 Write-Host "[>] Iniciando $svcName..." -ForegroundColor Cyan
 Start-Service -Name $svcName
-Start-Sleep -Seconds 3
+Start-Sleep -Seconds 4
 
 $status = (Get-Service -Name $svcName).Status
 if ($status -eq 'Running') {
